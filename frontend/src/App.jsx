@@ -315,6 +315,8 @@ function DiffPreview({ files }) {
   )
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 export default function App() {
   const [issueUrl, setIssueUrl] = useState('')
   const [status, setStatus] = useState('idle')
@@ -403,7 +405,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch('/run', {
+      const response = await fetch(`${API_BASE}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ issue_url: trimmedUrl }),
@@ -414,7 +416,7 @@ export default function App() {
       const { run_id } = await response.json()
       addLog('issue_analyzer', 'Connected to backend — starting pipeline...')
 
-      const source = new EventSource(`/stream/${run_id}`)
+      const source = new EventSource(`${API_BASE}/stream/${run_id}`)
       let pipelineDone = false
 
       source.addEventListener('agent_start', (e) => {
