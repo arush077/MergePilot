@@ -13,6 +13,7 @@ class AgentState:
     complexity: str = ""
     summary: str = ""
     code_context: dict[str, str] = field(default_factory=dict)
+    original_files: dict[str, str] = field(default_factory=dict)
     proposed_fix: dict[str, str] = field(default_factory=dict)
     test_code: str = ""
     test_file_path: str = ""

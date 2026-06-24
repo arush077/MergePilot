@@ -423,38 +423,45 @@ If nothing is relevant, return {"relevant_chunks": []}."""
         print("  Warning: Groq returned no relevant chunks (low confidence)")
 
     state.code_context = code_context
+    state.original_files = dict(fetched)
     state.status = "drafting"
     print(f"  Relevant snippets from {len(code_context)} file(s)")
 
 
 # ── Fix Drafter ─────────────────────────────────────────────────────────────
 
-
 _SYSTEM_PROMPT_FIX = """\
-You are an expert software engineer writing a targeted code fix.
+Return ONLY valid JSON. No markdown, no explanation.
 
-Given a GitHub issue and relevant code snippets, produce the fix.
+You are making targeted surgical code changes. For each file that needs
+changes, specify the EXACT original text to find and the new text to
+replace it with.  The "original" value must be a verbatim match of
+existing code — include enough surrounding lines to make it unique.
 
-Rules:
-- For each file that needs changes, provide the COMPLETE new file content.
-- Add inline comments explaining what you changed and why.
-- If you cannot determine a fix, set "cannot_fix" to true.
+RULES:
+- "original" must match existing source character-for-character
+- Only change the minimum lines needed to fix the issue
+- PRESERVE all `${...}` template literal syntax — do not strip braces
+- Do NOT add inline comments unless they existed before
+- Include enough context in "original" so there is exactly one match
 
-Return ONLY valid JSON:
 {
   "cannot_fix": false,
-  "reason": "",
-  "fixes": {
-    "path/to/file.py": "complete new file content with inline comments..."
-  },
+  "changes": [
+    {
+      "file": "path/to/file.py",
+      "original": "exact text currently in the file (multi-line supported)",
+      "replacement": "new text that replaces original"
+    }
+  ],
   "summary": "Brief explanation of the fix"
 }
 
-If you cannot determine the fix:
+If you cannot fix:
 {
   "cannot_fix": true,
-  "reason": "Clear explanation of why the fix cannot be determined",
-  "fixes": {}
+  "reason": "Why the fix cannot be determined",
+  "changes": []
 }"""
 
 
@@ -464,12 +471,48 @@ def _build_fix_prompt(issue: dict, code_context: dict[str, str]) -> str:
     parts = [f"## Issue\n{title}\n\n{body}\n"]
     parts.append("## Relevant code")
     for filepath, content in code_context.items():
-        parts.append(f"\n--- {filepath} ---\n```python\n{content}\n```")
+        lang = "python" if filepath.endswith(".py") else "js" if filepath.endswith((".js", ".jsx")) else ""
+        fence = f"```{lang}" if lang else "```"
+        parts.append(f"\n--- {filepath} ---\n{fence}\n{content}\n```")
     return "\n".join(parts)
 
 
+def _apply_surgical_changes(
+    original_files: dict[str, str],
+    changes: list[dict],
+) -> dict[str, str]:
+    modified: dict[str, str] = {}
+    for change in changes:
+        filepath = change.get("file", "")
+        original = change.get("original", "")
+        replacement = change.get("replacement", "")
+        if not filepath or not original:
+            continue
+        if filepath not in original_files:
+            print(f"  [!] File {filepath} not in original_files — skipping")
+            continue
+        content = original_files[filepath]
+        idx = content.find(original)
+        if idx == -1:
+            print(f"  [!] Could not find original text in {filepath} — skipping")
+            continue
+        new_content = content[:idx] + replacement + content[idx + len(original):]
+        if new_content != content:
+            modified[filepath] = new_content
+    return modified
+
+
+def _validate_snippet(snippet: str, filepath: str) -> bool:
+    if filepath.endswith(".py"):
+        try:
+            compile(snippet, "<fix>", "exec")
+            return True
+        except SyntaxError:
+            return False
+    return True
+
+
 def draft_fix(state: AgentState) -> None:
-    """Generate a code fix via Groq from code_context + issue."""
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY not set")
@@ -517,13 +560,40 @@ def draft_fix(state: AgentState) -> None:
 
     if parsed.get("cannot_fix", False):
         state.status = "failed"
-        state.error = parsed.get("reason",
-                                 "FixDrafter could not determine a fix")
+        state.error = parsed.get("reason", "FixDrafter could not determine a fix")
         return
 
-    state.proposed_fix = parsed.get("fixes", {})
+    changes = parsed.get("changes", [])
+    if not changes:
+        state.status = "failed"
+        state.error = "FixDrafter returned no changes"
+        return
+
+    applied = _apply_surgical_changes(state.original_files, changes)
+
+    if not state.original_files:
+        state.low_confidence = True
+
+    if not applied:
+        state.status = "failed"
+        state.error = (
+            f"FixDrafter could not apply any surgical changes — "
+            f"none of the {len(changes)} change(s)"
+            f" matched the original file content"
+        )
+        return
+
+    for change in changes:
+        fp = change.get("file", "")
+        rep = change.get("replacement", "")
+        if fp.endswith(".py") and rep and not _validate_snippet(rep, fp):
+            print(f"  [!] Syntax error in {fp}")
+            state.low_confidence = True
+
+    state.proposed_fix = applied
     state.status = "testing"
-    print(f"  Generated fix for {len(state.proposed_fix)} file(s)")
+    diff = sum(1 for c in changes if c.get("file"))
+    print(f"  {len(changes)} surgical change(s) across {diff} file(s)")
 
 
 # ── Test Writer ─────────────────────────────────────────────────────────────

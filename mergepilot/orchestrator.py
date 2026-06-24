@@ -82,7 +82,8 @@ class Orchestrator:
         try:
             agent_fn(state)
             state.retry_count = 0
-            state.error = None
+            if state.status not in ("failed",):
+                state.error = None
         except Exception as exc:
             state.error = str(exc)
             state.retry_count += 1
