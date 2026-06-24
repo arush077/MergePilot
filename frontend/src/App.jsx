@@ -6,7 +6,6 @@ const AGENTS = [
   { id: 'fix_drafter', label: 'Fix Drafter' },
   { id: 'test_writer', label: 'Test Writer' },
   { id: 'pr_creator', label: 'PR Creator' },
-  { id: 'reviewer', label: 'Reviewer' },
 ]
 
 const MOCK_LOGS = {
@@ -41,10 +40,6 @@ const MOCK_LOGS = {
     'Generating PR description via Groq...',
     'PR #1 created: https://github.com/username/repo/pull/1',
   ],
-  reviewer: [
-    'Reviewing PR #1...',
-    'Pipeline complete — all checks passed',
-  ],
 }
 
 const MOCK_AGENT_RESULTS = {
@@ -70,9 +65,6 @@ const MOCK_AGENT_RESULTS = {
   pr_creator: {
     pr_url: 'https://github.com/username/repo/pull/1',
   },
-  reviewer: {
-    pr_url: 'https://github.com/username/repo/pull/1',
-  },
 }
 
 const MOCK_DIFF = `@@ -42,7 +42,9 @@ const LoginButton = ({ onSubmit }) => {
@@ -83,7 +75,7 @@ const MOCK_DIFF = `@@ -42,7 +42,9 @@ const LoginButton = ({ onSubmit }) => {
 -    {loading ? 'Logging in...' : 'Login'}
 +    {loading ? 'Logging in...' : 'Sign In'}
    </button>
- );
+);
 
 +const handleTouch = (e) => {
 +  e.preventDefault();
@@ -91,6 +83,15 @@ const MOCK_DIFF = `@@ -42,7 +42,9 @@ const LoginButton = ({ onSubmit }) => {
 +};`
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
+
+const CARD_CLASS = 'rounded-2xl backdrop-blur'
+const CARD_STYLE = {
+  background: 'rgba(10,15,35,0.7)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+}
 
 function ParticleBackground() {
   const canvasRef = useRef(null)
@@ -155,91 +156,78 @@ function ParticleBackground() {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />
 }
 
-function AgentNode({ agent, status, info }) {
-  const statusStyles = {
-    idle: 'border-dark-600 text-gray-500',
-    active:
-      'border-transparent text-white shadow-[0_0_20px_rgba(108,99,255,0.3)]',
-    complete: 'border-green-500/50 text-green-400',
-    error: 'border-red-500/50 text-red-400',
-  }
-
-  const statusIcon = {
-    idle: null,
-    active: (
-      <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-accent to-accent-light animate-pulse-glow" />
-    ),
-    complete: (
-      <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-      </svg>
-    ),
-    error: (
-      <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-      </svg>
-    ),
-  }
+function PipelineStep({ agent, status, info, isLast }) {
+  const isActive = status === 'active'
+  const isComplete = status === 'complete'
+  const isError = status === 'error'
 
   return (
-    <div className="flex flex-col items-center gap-2 min-w-0">
-      <div
-        className={`w-20 h-20 rounded-xl flex items-center justify-center transition-all duration-500 border ${
-          statusStyles[status]
-        } ${
-          status === 'active'
-            ? 'bg-gradient-to-br from-accent/10 to-accent-light/10'
-            : 'bg-dark-800'
-        }`}
-      >
-        {statusIcon[status] || (
-          <span className="text-lg font-bold font-mono text-gray-600">
-            {agent.label.charAt(0)}
-          </span>
+    <div className="relative">
+      <div className="flex items-center gap-4">
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 border ${
+              isActive
+                ? 'border-accent/60 bg-accent/15 shadow-[0_0_16px_rgba(108,99,255,0.35)]'
+                : isComplete
+                ? 'border-green-500/50 bg-green-500/10'
+                : isError
+                ? 'border-red-500/50 bg-red-500/10'
+                : 'border-dark-600 bg-dark-800/50'
+            }`}
+          >
+            {isComplete ? (
+              <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : isActive ? (
+              <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-accent to-accent-light animate-pulse-glow" />
+            ) : isError ? (
+              <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-dark-500" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className={`text-sm font-medium transition-colors duration-300 ${
+            isActive ? 'text-white' : isComplete ? 'text-green-400' : isError ? 'text-red-400' : 'text-gray-500'
+          }`}>
+            {agent.label}
+          </div>
+          {info && isComplete && (
+            <div className="text-[11px] text-gray-600 truncate mt-0.5">{info}</div>
+          )}
+        </div>
+
+        {isActive && (
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
+              <span className="w-1 h-1 rounded-full bg-accent/60 animate-pulse" style={{ animationDelay: '0.2s' }} />
+              <span className="w-1 h-1 rounded-full bg-accent/30 animate-pulse" style={{ animationDelay: '0.4s' }} />
+            </div>
+          </div>
         )}
       </div>
-      <span
-        className={`text-xs font-medium text-center leading-tight transition-colors duration-300 ${
-          status === 'active'
-            ? 'text-white'
-            : status === 'complete'
-            ? 'text-green-400'
-            : status === 'error'
-            ? 'text-red-400'
-            : 'text-gray-500'
-        }`}
-      >
-        {agent.label}
-      </span>
-      {info && status === 'complete' && (
-        <span className="text-[10px] text-gray-600 text-center leading-tight max-w-[100px] truncate">
-          {info}
-        </span>
+
+      {!isLast && (
+        <div className="ml-4 pl-0 mt-0">
+          <div className="w-px h-6 ml-[18px] relative overflow-hidden">
+            <div
+              className={`absolute inset-x-0 top-0 h-full transition-all duration-700 ${
+                isComplete ? 'bg-green-500/40' : isActive ? 'bg-gradient-to-b from-accent to-accent/20' : 'bg-dark-600'
+              }`}
+            />
+            {isActive && (
+              <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-accent to-transparent animate-[pipelineGlow_1.5s_ease-in-out_infinite]" />
+            )}
+          </div>
+        </div>
       )}
-    </div>
-  )
-}
-
-function ConnectorLine({ status }) {
-  const fillPercent =
-    status === 'complete'
-      ? '100%'
-      : status === 'active'
-      ? '50%'
-      : '0%'
-
-  return (
-    <div className="flex-1 min-w-[24px] max-w-[48px] flex items-center">
-      <div className="w-full h-[2px] rounded-full relative overflow-hidden bg-dark-600">
-        <div
-          className="absolute inset-y-0 left-0 transition-all duration-700 ease-out rounded-full"
-          style={{
-            width: fillPercent,
-            background:
-              'linear-gradient(90deg, #6C63FF, #00D4FF)',
-          }}
-        />
-      </div>
     </div>
   )
 }
@@ -253,24 +241,24 @@ function LogViewer({ logs }) {
 
   if (logs.length === 0) return null
 
+  const agentColors = {
+    issue_analyzer: 'text-cyan-400',
+    codebase_researcher: 'text-violet-400',
+    fix_drafter: 'text-amber-400',
+    test_writer: 'text-emerald-400',
+    pr_creator: 'text-blue-400',
+  }
+
   return (
-    <div className="w-full max-w-3xl mx-auto mt-8 bg-dark-800/80 border border-dark-600 rounded-xl overflow-hidden backdrop-blur-sm">
-      <div className="px-4 py-2 border-b border-dark-600 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-green-500/50" />
-        <span className="text-xs text-gray-500 font-mono uppercase tracking-wider">Output</span>
+    <div className="h-full flex flex-col">
+      <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-green-500/60" />
+        <span className="text-xs text-gray-400 font-mono uppercase tracking-wider">Terminal</span>
         <span className="text-xs text-gray-600 font-mono ml-auto">{logs.length} lines</span>
       </div>
-      <div className="p-4 max-h-[320px] overflow-y-auto font-mono text-xs leading-relaxed space-y-1">
+      <div className="p-4 flex-1 overflow-y-auto font-mono text-xs leading-relaxed space-y-1.5 min-h-[200px] max-h-[360px]">
         {logs.map((log, i) => {
           const agentLabel = AGENTS.find((a) => a.id === log.agentId)?.label || log.agentId
-          const agentColors = {
-            issue_analyzer: 'text-cyan-400',
-            codebase_researcher: 'text-violet-400',
-            fix_drafter: 'text-amber-400',
-            test_writer: 'text-emerald-400',
-            pr_creator: 'text-blue-400',
-            reviewer: 'text-rose-400',
-          }
           const color = agentColors[log.agentId] || 'text-gray-400'
           return (
             <div key={i} className="opacity-0 animate-[fadeIn_0.2s_ease_forwards]">
@@ -291,16 +279,16 @@ function DiffPreview({ files }) {
   if (!files || files.length === 0) return null
 
   return (
-    <div className="w-full max-w-3xl mx-auto mt-6">
+    <div>
       <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
         Files Changed
       </h3>
       <div className="space-y-2">
         {files.map((file) => (
-          <div key={file.path} className="bg-dark-800/80 border border-dark-600 rounded-xl overflow-hidden">
+          <div key={file.path} className="rounded-xl overflow-hidden border border-white/5" style={{ background: 'rgba(10,15,35,0.5)' }}>
             <button
               onClick={() => setOpen(open === file.path ? null : file.path)}
-              className="w-full px-4 py-3 flex items-center justify-between text-sm hover:bg-dark-700/50 transition-colors"
+              className="w-full px-4 py-3 flex items-center justify-between text-sm hover:bg-white/[0.03] transition-colors"
             >
               <span className="text-gray-300 font-mono">{file.path}</span>
               <svg
@@ -316,7 +304,7 @@ function DiffPreview({ files }) {
               </svg>
             </button>
             {open === file.path && (
-              <pre className="p-4 border-t border-dark-600 overflow-x-auto text-xs leading-relaxed">
+              <pre className="p-4 border-t border-white/5 overflow-x-auto text-xs leading-relaxed">
                 <code className="text-gray-300">{file.diff}</code>
               </pre>
             )}
@@ -357,6 +345,8 @@ export default function App() {
     setAgentStates((prev) => ({ ...prev, [agentId]: { status, info } }))
   }, [])
 
+  const completedCount = Object.values(agentStates).filter((s) => s.status === 'complete').length
+
   const runMockPipeline = useCallback(async () => {
     abortRef.current = false
 
@@ -382,16 +372,6 @@ export default function App() {
         resultData.summary || resultData.pr_url || `${resultData.num_files || 0} files`
       updateAgent(agent.id, 'complete', infoText)
 
-      if (agent.id === 'pr_creator') {
-        await delay(500)
-        updateAgent('reviewer', 'active')
-        addLog('reviewer', 'Starting Reviewer...')
-        for (const line of MOCK_LOGS.reviewer) {
-          await delay(300)
-          addLog('reviewer', line)
-        }
-        updateAgent('reviewer', 'complete', 'All checks passed')
-      }
     }
 
     if (!abortRef.current) {
@@ -498,11 +478,11 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen text-gray-200">
-      <div className="fixed inset-0 pointer-events-none bg-[url('/1.jpg')] bg-cover bg-center" style={{ zIndex: 0 }} />
+      <div className="fixed inset-0 pointer-events-none bg-[url('/5.jpg')] bg-no-repeat bg-top bg-[length:auto_135%]" style={{ zIndex: 0 }} />
       <ParticleBackground />
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <nav className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
+        <nav className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto w-full">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-accent to-accent-light flex items-center justify-center">
               <span className="text-black text-xs font-bold font-mono">M</span>
@@ -512,147 +492,160 @@ export default function App() {
           <span className="text-xs text-gray-600 font-mono">v0.1</span>
         </nav>
 
-        <main className="flex-1 px-6 pb-16 max-w-6xl mx-auto">
+        <main className="flex-1 px-6 pb-16 max-w-6xl mx-auto w-full">
           {status === 'idle' && !error && (
-            <section className="pt-32 md:pt-44 pb-20 text-center">
+            <section className="pt-16 md:pt-20 pb-20 text-center">
               <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-extrabold text-white leading-[1.05] tracking-tight mb-14">
                 Your issues.
                 <span className="block mt-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
                   Resolved.
                 </span>
               </h1>
-              <div className="flex items-center justify-center gap-3 max-w-2xl mx-auto mb-8">
-                <input
-                  type="text"
-                  value={issueUrl}
-                  onChange={(e) => setIssueUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRun()}
-                  placeholder="https://github.com/owner/repo/issues/42"
-                  className="flex-1 px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-colors font-mono"
-                />
-                <button
-                  onClick={handleRun}
-                  className="px-8 py-4 bg-accent hover:bg-accent/90 text-white text-base font-semibold rounded-xl transition-all duration-200 whitespace-nowrap"
-                >
-                  Run
-                </button>
+              <div className="flex flex-col items-center gap-2 max-w-2xl mx-auto mb-8">
+                <label className="text-xs text-gray-400 font-medium tracking-wide uppercase">Enter GitHub Issue URL</label>
+                <div className="flex items-center gap-3 w-full">
+                  <input
+                    type="text"
+                    value={issueUrl}
+                    onChange={(e) => setIssueUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRun()}
+                    placeholder="https://github.com/owner/repo/issues/42"
+                    className="flex-1 px-4 py-3 bg-dark-800/90 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-accent/50 shadow-[0_0_20px_rgba(108,99,255,0.25)] transition-all duration-300 font-mono"
+                  />
+                  <button
+                    onClick={handleRun}
+                    className="px-8 py-4 bg-gradient-to-r from-accent to-accent-light hover:from-accent/90 hover:to-accent-light/90 text-white text-base font-semibold rounded-xl transition-all duration-200 whitespace-nowrap shadow-[0_0_20px_rgba(108,99,255,0.3)] active:scale-95"
+                  >
+                    Run
+                  </button>
+                </div>
               </div>
-              <p className="text-gray-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed font-normal">
+              <p className="text-gray-300 text-sm md:text-base max-w-lg mx-auto leading-relaxed font-semibold mt-8">
                 MergePilot reads a GitHub issue, researches your codebase, drafts a fix,
                 writes tests, and opens a pull request — all autonomously.
               </p>
             </section>
           )}
 
-          {status === 'running' && (
-            <section className="pt-16 pb-8">
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex items-center justify-center gap-0 w-full max-w-2xl mx-auto px-4">
-                  {AGENTS.map((agent, i) => (
-                    <div key={agent.id} className="flex items-center flex-1">
-                      <AgentNode
-                        agent={agent}
-                        status={agentStates[agent.id]?.status || 'idle'}
-                        info={agentStates[agent.id]?.info}
-                      />
-                      {i < AGENTS.length - 1 && (
-                        <ConnectorLine
+          {(status === 'running' || status === 'done') && (
+            <section className="pt-8 pb-8">
+              <div className="grid grid-cols-12 gap-6">
+                {/* Left Column — Pipeline */}
+                <div className="col-span-12 lg:col-span-4">
+                  <div className={CARD_CLASS} style={CARD_STYLE}>
+                    <div className="px-5 py-4 border-b border-white/5">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Pipeline</h2>
+                        <span className="text-xs text-gray-500 font-mono">{completedCount}/{AGENTS.length}</span>
+                      </div>
+                      {status === 'running' && (
+                        <div className="mt-2 w-full h-1 rounded-full bg-dark-600 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
+                            style={{ width: `${(completedCount / AGENTS.length) * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-5 space-y-0">
+                      {AGENTS.map((agent, i) => (
+                        <PipelineStep
+                          key={agent.id}
+                          agent={agent}
                           status={agentStates[agent.id]?.status || 'idle'}
+                          info={agentStates[agent.id]?.info}
+                          isLast={i === AGENTS.length - 1}
                         />
-                      )}
+                      ))}
                     </div>
-                  ))}
+                    {status === 'running' && (
+                      <div className="px-5 py-3 border-t border-white/5 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />
+                        <span className="text-xs text-gray-500">
+                          {mockMode ? 'Mock mode' : 'Running...'}
+                        </span>
+                      </div>
+                    )}
+                    {status === 'done' && (
+                      <div className="px-5 py-3 border-t border-white/5 flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-xs text-green-400">All checks passed</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />
-                  Pipeline running
-                  {mockMode && <span className="text-amber-500/70"> (mock mode)</span>}
-                </div>
+                {/* Right Column — Terminal + Summary */}
+                <div className="col-span-12 lg:col-span-8 flex flex-col gap-6">
+                  {/* Terminal */}
+                  <div className={CARD_CLASS} style={CARD_STYLE}>
+                    <LogViewer logs={logs} />
+                    {logs.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-gray-600">
+                        Waiting for pipeline output...
+                      </div>
+                    )}
+                  </div>
 
-                <LogViewer logs={logs} />
-
-                <button
-                  onClick={reset}
-                  className="mt-4 text-xs text-gray-600 hover:text-gray-400 transition-colors"
-                >
-                  Cancel &amp; reset
-                </button>
-              </div>
-            </section>
-          )}
-
-          {status === 'done' && result && (
-            <section className="pt-16 pb-8">
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex items-center justify-center gap-0 w-full max-w-2xl mx-auto px-4">
-                  {AGENTS.map((agent, i) => (
-                    <div key={agent.id} className="flex items-center flex-1">
-                      <AgentNode
-                        agent={agent}
-                        status={agentStates[agent.id]?.status || 'idle'}
-                        info={agentStates[agent.id]?.info}
-                      />
-                      {i < AGENTS.length - 1 && (
-                        <ConnectorLine status="complete" />
-                      )}
+                  {/* PR Summary */}
+                  {status === 'done' && result && (
+                    <div className={CARD_CLASS} style={CARD_STYLE}>
+                      <div className="px-5 py-4 border-b border-white/5 flex items-center gap-3">
+                        <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex-1">Pull Request</h2>
+                        <a
+                          href={result.pr_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-black hover:bg-black/80 text-white text-sm font-medium rounded-lg border border-dark-600 transition-all duration-200 active:scale-95 flex items-center gap-1.5"
+                        >
+                          View PR
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      </div>
+                      <div className="p-5 space-y-4">
+                        <div className="flex gap-3 text-xs">
+                          <span className="px-2.5 py-1 rounded-full bg-dark-700 text-gray-400 capitalize">
+                            {result.issue_type || 'bug'}
+                          </span>
+                          <span className="px-2.5 py-1 rounded-full bg-dark-700 text-gray-400 capitalize">
+                            {result.complexity || 'medium'} complexity
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400 leading-relaxed">{result.summary}</p>
+                        <DiffPreview files={result.files} />
+                      </div>
+                      <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between">
+                        <span className="text-xs text-gray-600">Branch: <span className="text-gray-400 font-mono">mergepilot/fix-42</span></span>
+                        <button
+                          onClick={reset}
+                          className="text-xs text-white font-semibold hover:text-gray-300 transition-colors"
+                        >
+                          Run another issue
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )}
 
-                <div className="flex items-center gap-2 text-xs text-green-500">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Pipeline complete
-                  {mockMode && <span className="text-amber-500/70"> (mock mode — backend not connected)</span>}
-                </div>
-
-                <LogViewer logs={logs} />
-
-                <div className="w-full max-w-3xl mx-auto mt-4 bg-dark-800/80 border border-dark-600 rounded-xl p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-white">Pull Request Created</h2>
-                    <a
-                      href={result.pr_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-accent hover:text-accent-light transition-colors flex items-center gap-1"
+                  {status === 'running' && (
+                    <button
+                      onClick={reset}
+                      className="self-start text-xs text-gray-600 hover:text-gray-400 transition-colors"
                     >
-                      View PR
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
-                  </div>
-
-                  <div className="flex gap-4 text-xs">
-                    <span className="px-2.5 py-1 rounded-full bg-dark-700 text-gray-400 capitalize">
-                      {result.issue_type || 'bug'}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full bg-dark-700 text-gray-400 capitalize">
-                      {result.complexity || 'medium'} complexity
-                    </span>
-                  </div>
-
-                  <p className="text-sm text-gray-400 leading-relaxed">{result.summary}</p>
-
-                  <DiffPreview files={result.files} />
+                      Cancel &amp; reset
+                    </button>
+                  )}
                 </div>
-
-                <button
-                  onClick={reset}
-                  className="mt-4 text-sm text-accent hover:text-accent-light transition-colors"
-                >
-                  Run another issue
-                </button>
               </div>
             </section>
           )}
 
           {error && status === 'idle' && (
             <section className="pt-24 pb-16 text-center">
-              <div className="max-w-md mx-auto bg-dark-800/80 border border-red-500/30 rounded-xl p-6">
+              <div className="max-w-md mx-auto" style={{ ...CARD_STYLE, borderRadius: '1rem', padding: '1.5rem' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -672,7 +665,7 @@ export default function App() {
         </main>
 
         <footer className="border-t border-dark-600 py-6 px-6">
-          <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-gray-600">
+          <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-gray-400">
             <span>MergePilot — autonomous PR generation</span>
             <span>Built with Groq &middot; FastAPI &middot; React</span>
           </div>
@@ -683,6 +676,10 @@ export default function App() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pipelineGlow {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 1; }
         }
       `}</style>
     </div>

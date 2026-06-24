@@ -73,8 +73,6 @@ def _build_agent_event(agent_name: str, state: AgentState) -> dict:
         )
     elif agent_name == "pr_creator":
         base.update({"pr_url": state.pr_url})
-    elif agent_name == "reviewer":
-        base.update({"pr_url": state.pr_url})
     return base
 
 
