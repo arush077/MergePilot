@@ -215,8 +215,8 @@ function PipelineStep({ agent, status, info, isLast }) {
       </div>
 
       {!isLast && (
-        <div className="ml-4 pl-0 mt-0">
-          <div className="w-px h-6 ml-[18px] relative overflow-hidden">
+        <div className="flex justify-center w-9 mt-0">
+          <div className="w-px h-6 relative overflow-hidden">
             <div
               className={`absolute inset-x-0 top-0 h-full transition-all duration-700 ${
                 isComplete ? 'bg-green-500/40' : isActive ? 'bg-gradient-to-b from-accent to-accent/20' : 'bg-dark-600'
