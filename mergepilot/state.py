@@ -7,6 +7,7 @@ class AgentState:
     """Shared state that all agents read from and write to."""
 
     issue: dict
+    github_token: str = ""
     relevant_files: list[str] = field(default_factory=list)
     issue_type: str = ""
     affected_areas: list[str] = field(default_factory=list)

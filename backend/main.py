@@ -8,7 +8,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
-from fastapi import FastAPI
+import requests
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -35,6 +36,29 @@ run_queues: dict[str, asyncio.Queue] = {}
 
 class RunRequest(BaseModel):
     issue_url: str
+    github_token: str = ""
+
+
+def validate_github_token(token: str) -> str:
+    """Verify token by calling GitHub /user and return the username.
+
+    Token is user-supplied, validated once, used in-memory,
+    never persisted. Each run is fully isolated.
+    """
+    resp = requests.get(
+        "https://api.github.com/user",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+        timeout=10,
+    )
+    if resp.status_code in (401, 403):
+        raise ValueError(
+            "Invalid GitHub token. Please check and try again."
+        )
+    resp.raise_for_status()
+    return resp.json()["login"]
 
 
 def _build_agent_event(agent_name: str, state: AgentState) -> dict:
@@ -77,7 +101,8 @@ def _build_agent_event(agent_name: str, state: AgentState) -> dict:
 
 
 async def _run_pipeline(
-    run_id: str, issue_url: str, queue: asyncio.Queue
+    run_id: str, issue_url: str, queue: asyncio.Queue,
+    github_token: str = "",
 ) -> None:
     loop = asyncio.get_event_loop()
     try:
@@ -85,7 +110,7 @@ async def _run_pipeline(
         await queue.put(("pipeline_start", {"issue": issue}))
 
         orchestrator = Orchestrator(max_retries=3)
-        state = AgentState(issue=issue)
+        state = AgentState(issue=issue, github_token=github_token)
 
         while state.status not in ("done", "failed"):
             agent_name = orchestrator.route(state)
@@ -139,11 +164,18 @@ async def _run_pipeline(
 
 @app.post("/run")
 async def run(body: RunRequest):
+    try:
+        github_username = validate_github_token(body.github_token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     run_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
     run_queues[run_id] = queue
-    asyncio.ensure_future(_run_pipeline(run_id, body.issue_url, queue))
-    return {"run_id": run_id}
+    asyncio.ensure_future(
+        _run_pipeline(run_id, body.issue_url, queue, body.github_token)
+    )
+    return {"run_id": run_id, "github_username": github_username}
 
 
 @app.get("/stream/{run_id}")

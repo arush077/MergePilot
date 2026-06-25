@@ -97,9 +97,9 @@ class Orchestrator:
         # Snapshot the state after this step for the pipeline timeline.
         self.state_history.append((agent_name, deepcopy(state)))
 
-    def run(self, issue: dict) -> AgentState:
+    def run(self, issue: dict, github_token: str = "") -> AgentState:
         """Initialize state and run the pipeline until completion or failure."""
-        state = AgentState(issue=issue)
+        state = AgentState(issue=issue, github_token=github_token)
         self.state_history = []
         while state.status not in ("done", "failed"):
             self.step(state)

@@ -295,6 +295,12 @@ def research_codebase(state: AgentState) -> None:
     groq_client = Groq(api_key=api_key)
     session = requests.Session()
     session.headers.update({"Accept": "application/vnd.github+json"})
+    # ── Web path: use per-user token for authenticated requests ──────────
+    # CLI path: token is empty → falls back to unauthenticated (public repos)
+    if state.github_token:
+        session.headers.update({
+            "Authorization": f"Bearer {state.github_token}"
+        })
 
     owner_repo = state.issue.get("repo", "")
     if "/" not in owner_repo:
@@ -716,10 +722,20 @@ def _build_pr_body_prompt(issue: dict, proposed_fix: dict[str, str],
 
 
 def create_pr(state: AgentState) -> None:
-    """Create a branch, commit fix + tests, and open a PR."""
-    token = os.environ.get("GITHUB_TOKEN")
+    """Create a branch, commit fix + tests, and open a PR.
+
+    ── Token resolution ──────────────────────────────────────────────────
+    Web path (backend/main.py):
+        state.github_token is set → used for this run, never persisted.
+    CLI path (python -m mergepilot):
+        state.github_token is empty → falls back to GITHUB_TOKEN from .env.
+    """
+    token = state.github_token or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise ValueError("GITHUB_TOKEN not set")
+        raise ValueError(
+            "GITHUB_TOKEN not set — provide a token via the web UI "
+            "or set GITHUB_TOKEN in .env for CLI usage."
+        )
 
     print("[PR Creator] Creating branch, committing files, opening PR...")
 
