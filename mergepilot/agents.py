@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import base64
 import json
 import os
@@ -124,7 +123,7 @@ def analyze_issue(state: AgentState) -> None:
     # second attempt also fails we let the orchestrator handle the retry.
     for attempt in range(2):
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=messages,
             temperature=0,
             max_tokens=512,
@@ -165,44 +164,13 @@ def analyze_issue(state: AgentState) -> None:
 
 # ── Chunking ────────────────────────────────────────────────────────────────
 #
-# Why we chunk files before sending them to Groq:
-#   1. Token budget — a file can be 1000+ lines; most are noise.  Chunking
-#      keeps the relevant context inside the model's window.
-#   2. Precision — function/class boundaries are natural semantic units.
-#      Groq can say "the `login()` function at line 30" rather than vaguely
-#      referencing an entire file.
-#   3. Cost — fewer tokens = cheaper + faster API calls.
-#
 
 
-def _chunk_python_file(content: str, filepath: str) -> list[dict]:
-    """Parse a Python file into function/class-level chunks via ast."""
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        lines = content.splitlines()
-        return [{"file": filepath, "name": "<module>", "type": "module",
-                 "start_line": 1, "end_line": len(lines), "content": content}]
-
-    chunks = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            start = node.lineno
-            end = getattr(node, "end_lineno", start)
-            lines = content.splitlines()[start - 1:end]
-            chunks.append({
-                "file": filepath,
-                "name": node.name,
-                "type": "class" if isinstance(node, ast.ClassDef) else "function",
-                "start_line": start,
-                "end_line": end,
-                "content": "\n".join(lines),
-            })
-
-    # No functions/classes found → return the whole file as a single chunk.
-    return chunks or [{"file": filepath, "name": "<module>", "type": "module",
-                       "start_line": 1, "end_line": len(content.splitlines()),
-                       "content": content}]
+def _chunk_file(content: str, filepath: str) -> list[dict]:
+    """Return the entire file as a single chunk (language-agnostic)."""
+    lines = content.splitlines()
+    return [{"file": filepath, "name": "<module>", "type": "module",
+             "start_line": 1, "end_line": len(lines), "content": content}]
 
 
 def _extract_lines(content: str, line_spec: str) -> str:
@@ -247,8 +215,8 @@ def _fetch_raw_file(owner: str, repo: str, path: str, branch: str,
 
 
 def _rate_limited_get(url: str, session: requests.Session,
-                      attempt: int = 0) -> requests.Response:
-    """GET with rate-limit detection + exponential backoff."""
+                      attempt: int = 0, max_attempts: int = 3) -> requests.Response:
+    """GET with rate-limit detection + exponential backoff (max 3 attempts)."""
     resp = session.get(url)
     remaining = resp.headers.get("X-RateLimit-Remaining")
 
@@ -256,10 +224,25 @@ def _rate_limited_get(url: str, session: requests.Session,
         resp.status_code == 403 and remaining is not None and int(remaining) == 0
     ):
         reset_ts = int(resp.headers.get("X-RateLimit-Reset", 0))
-        wait = max(reset_ts - time.time(), min(2 ** attempt * 60, 3600))
-        print(f"  [Codebase Researcher] Rate limited — waiting {wait:.0f}s...")
+        wait = reset_ts - time.time()
+
+        # Reset too far away — fail fast instead of making user wait
+        if wait > 120:
+            raise RuntimeError(
+                f"GitHub API rate limit exceeded. Resets in {wait:.0f}s "
+                f"({int(wait/60)} min). Try again later."
+            )
+
+        if attempt >= max_attempts:
+            raise RuntimeError(
+                f"GitHub API rate limit exceeded — failed after {max_attempts} "
+                f"retries. Try again later."
+            )
+
+        wait = max(wait, 1)
+        print(f"  [GitHub] Rate limited — waiting {wait:.0f}s (attempt {attempt+1}/{max_attempts})...")
         time.sleep(wait)
-        return _rate_limited_get(url, session, attempt + 1)
+        return _rate_limited_get(url, session, attempt + 1, max_attempts)
 
     resp.raise_for_status()
     return resp
@@ -351,10 +334,10 @@ def research_codebase(state: AgentState) -> None:
         state.error = "No files could be fetched from the repository"
         return
 
-    # ---- 4. Chunk each file by function/class ----
+    # ---- 4. Chunk each file (one chunk per file) ----
     all_chunks: list[dict] = []
     for filepath, content in fetched.items():
-        all_chunks.extend(_chunk_python_file(content, filepath))
+        all_chunks.extend(_chunk_file(content, filepath))
     print(f"  Created {len(all_chunks)} chunks across {len(fetched)} file(s)")
 
     # ---- 5. Send chunks + issue to Groq for relevance filtering ----
@@ -386,7 +369,7 @@ If nothing is relevant, return {"relevant_chunks": []}."""
     relevant: list[dict] = []
     for attempt in range(2):
         response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=messages,
             temperature=0,
             max_tokens=1024,
@@ -539,7 +522,7 @@ def draft_fix(state: AgentState) -> None:
 
     for attempt in range(2):
         response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=messages,
             temperature=0,
             max_tokens=4096,
@@ -663,7 +646,7 @@ def write_tests(state: AgentState) -> None:
 
     for attempt in range(2):
         response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=messages,
             temperature=0,
             max_tokens=2048,
@@ -838,7 +821,7 @@ def create_pr(state: AgentState) -> None:
         {"role": "user", "content": body_prompt},
     ]
     body_resp = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=body_messages,
         temperature=0,
         max_tokens=1024,

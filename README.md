@@ -13,7 +13,7 @@ MergePilot runs a 5-agent pipeline, each step routing based on the current state
 | Step | Agent | Action |
 |---|---|---|
 | 1 | **Issue Analyzer** | Classifies issue type (bug/feature/refactor/docs), extracts complexity, affected areas, and suggested files |
-| 2 | **Codebase Researcher** | Fetches relevant files from GitHub, chunks them by function/class via AST, filters for relevance via LLM |
+| 2 | **Codebase Researcher** | Fetches relevant files from GitHub, chunks them per-file, filters for relevance via LLM |
 | 3 | **Fix Drafter** | Produces surgical find/replace edits, validates Python snippets with `compile()` |
 | 4 | **Test Writer** | Generates test code (only if the issue explicitly asks for tests) |
 | 5 | **PR Creator** | Creates a branch, commits changes, generates a PR description, opens the PR with labels |
@@ -24,7 +24,7 @@ A final **review** step sanity-checks the PR before marking the pipeline as done
 
 | Layer | Technology |
 |---|---|
-| **LLM** | Groq API (`llama-3.3-70b-versatile`) |
+| **LLM** | Groq API (`openai/gpt-oss-120b`) |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn |
 | **Frontend** | React 18, Vite 5, Tailwind CSS 3 |
 | **Real-time** | Server-Sent Events (SSE) |
