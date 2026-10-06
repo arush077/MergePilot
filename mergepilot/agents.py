@@ -312,6 +312,8 @@ def research_codebase(state: AgentState) -> None:
         ".scss", ".less", ".txt", ".md", ".rst", ".json", ".yaml",
         ".yml", ".toml", ".cfg", ".ini", ".csv", ".xml", ".svg",
         ".env", ".gitignore", ".dockerfile", ".yml", ".yaml",
+        ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".go", ".rs",
+        ".rb", ".php", ".swift", ".kt", ".scala",
     })
 
     # ---- 3. Fall back to listing the repo if nothing matched ----
