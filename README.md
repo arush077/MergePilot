@@ -2,10 +2,6 @@
 
 **MergePilot** is a multi-agent AI system that autonomously converts a GitHub issue into a fully-formed pull request. Feed it an issue URL and a GitHub token — it researches the codebase, drafts a fix, writes tests (when needed), and opens a PR, all without human intervention.
 
-## Demo
-
-![MergePilot UI](frontend/public/5.jpg)
-
 ## How It Works
 
 MergePilot runs a 5-agent pipeline, each step routing based on the current state:
