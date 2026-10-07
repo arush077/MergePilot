@@ -9,7 +9,7 @@ class AgentState:
     issue: dict
     github_token: str = ""
     relevant_files: list[str] = field(default_factory=list)
-    issue_type: str = ""
+    issue_type: str = ""  # it can be bug, feature, refactor, docs
     affected_areas: list[str] = field(default_factory=list)
     complexity: str = ""
     summary: str = ""
